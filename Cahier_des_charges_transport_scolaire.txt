@@ -1,0 +1,76 @@
+
+
+
+
+
+
+of ⁨2⁩
+
+
+
+
+Cahier des Charges Fonctionnel
+Application mobile de gestion du transport scolaire
+1. Informations générales
+Nom du projet : Gestion intelligente du transport scolaire
+2. Objectif du projet
+Le projet vise à développer une application mobile permettant une gestion efficace du
+transport scolaire. L'application devra optimiser le trajet des bus scolaires, localiser les
+élèves via GPS, notifier les parents à l'approche du bus et offrir une interface simple et fluide
+pour tous les utilisateurs. Une nouvelle fonctionnalité a été ajoutée : la répartition
+automatique des élèves en groupes géographiques pour faciliter l’organisation des points
+d’embarquement.
+3. Périmètre fonctionnel
+3.1. Gestion des bus
+ Lister tous les bus existants.
+ Ajouter un nouveau bus (matricule, capacité, chauffeur...).
+ Modifier les informations d’un bus.
+ Supprimer un bus.
+3.2. Gestion des élèves
+ Lister tous les élèves inscrits au service de transport.
+ Ajouter un élève avec ses coordonnées GPS.
+ Modifier les informations d’un élève.
+ Supprimer un élève.
+3.3. Gestion des trajectoires
+ Estimer le temps d’arrivée du bus à chaque domicile.
+ Envoyer une notification aux parents 10 minutes avant l’arrivée du bus, à l’aller et au
+retour.
+ Gérer la localisation des élèves via GPS (coordonnées envoyées par les parents).
+ Proposer et optimiser les trajectoires des bus selon les positions des élèves (calcul de
+chemin optimal).
+ Gérer les différents circuits et trajets des bus (matin et soir).
+3.4. Gestion des groupes d’élèves
+ Répartir automatiquement les élèves en groupes de X élèves (X configurable par
+l’administrateur) selon leur proximité géographique.
+ Permettre à l’administrateur de créer, modifier ou supprimer un groupe manuellement.
+ Associer chaque groupe à un point de ramassage et à un bus désigné.
+ Afficher la composition des groupes et leur localisation sur la carte.
+4. Contraintes techniques
+ Plateforme cible : Application mobile (Android ; iOS souhaité si budget le permet).
+ Technologies recommandées : Flutter / React Native (multiplateforme), Firebase ou
+autre backend cloud, Google Maps API.
+ Base de données : Cloud (Firebase Firestore, PostgreSQL, etc.).
+ Intégration GPS : via API native de géolocalisation.
+ Algorithme de clustering pour le groupement géographique (ex. K-means, DBSCAN).
+5. Interfaces utilisateur
+5.1. Parents
+ Enregistrement et envoi de la position GPS.
+ Réception des notifications d’arrivée du bus.
+ Suivi en temps réel du bus (optionnel).
+5.2. Administrateurs / Gestionnaires
+ Interface de gestion des bus, des élèves et des groupes.
+ Suivi des trajets.
+ Statistiques et historiques des trajets (optionnel).
+5.3. Chauffeurs (facultatif)
+ Visualisation de la trajectoire.
+ Liste des élèves à embarquer avec indication des groupes.
+ Confirmation de prise en charge / dépose des élèves.
+6. Exigences non fonctionnelles
+ Sécurité des données : Chiffrement des informations personnelles, authentification
+sécurisée.
+ Disponibilité : 99 % de disponibilité du service.
+ Facilité d’utilisation : Interface intuitive, simple à utiliser.
+ Notifications : Système de push notifications intégré.
+ Performances : Temps de réponse inférieur à 2 s pour les requêtes critiques.
+7. Délais et livrables
+Début septembre

@@ -1,0 +1,123 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database with PostGIS extension for location data
+  postgres-db:
+    image: postgis/postgis:13-3.1
+    container_name: transport_scolaire_postgres_dev
+    environment:
+      POSTGRES_DB: transport_scolaire
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-postgis.sql:/docker-entrypoint-initdb.d/init-postgis.sql
+      - ./pgdata:/var/lib/postgresql/data  # For persistence
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d transport_scolaire"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - transport-network
+    restart: unless-stopped
+
+  # Kafka for message queuing between services
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: transport_scolaire_zookeeper_dev
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - transport-network
+    restart: unless-stopped
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: transport_scolaire_kafka_dev
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - transport-network
+    restart: unless-stopped
+
+  # Location Service - Manages GPS locations of students and buses
+  location-service:
+    build:
+      context: ./location_service
+      dockerfile: Dockerfile
+    container_name: transport_scolaire_location_service_dev
+    ports:
+      - "8001:8000"
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres-db:5432/transport_scolaire
+      - ENVIRONMENT=development
+    volumes:
+      - ./location_service:/app  # For development - live code reloading
+    networks:
+      - transport-network
+    restart: unless-stopped
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  # Notification Service - Handles sending notifications via Kafka and Firebase
+  notification-service:
+    build:
+      context: ./notification_service
+      dockerfile: Dockerfile
+    container_name: transport_scolaire_notification_service_dev
+    ports:
+      - "8002:8000"
+    depends_on:
+      - kafka
+      - postgres-db
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres-db:5432/transport_scolaire
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_NOTIFICATIONS_TOPIC=eta_notifications
+      - STUDENT_SERVICE_URL=http://student-service:8000
+      - AUTH_SERVICE_URL=http://auth-service:8000
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/firebase-service-account.json
+      - ENVIRONMENT=development
+    volumes:
+      - ./notification_service:/app  # For development - live code reloading
+      - ./notification_service/firebase-service-account.json:/app/firebase-service-account.json:ro
+    networks:
+      - transport-network
+    restart: unless-stopped
+
+  # Redis for caching and session management
+  redis:
+    image: redis:7-alpine
+    container_name: transport_scolaire_redis_dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - transport-network
+    restart: unless-stopped
+
+networks:
+  transport-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:

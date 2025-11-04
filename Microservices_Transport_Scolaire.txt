@@ -1,0 +1,75 @@
+
+
+
+
+
+
+of ⁨3⁩
+
+
+
+
+Architecture en Microservices - Application de Transport Scolaire (v2)
+1. Microservice Gestion des Bus
+Responsabilités :
+ Ajouter, modifier, supprimer, consulter des bus
+ Gérer les informations de chaque bus (immatriculation, capacité, chauffeur, statut, etc.)
+Exemples d’API :
+ GET /buses
+ POST /buses
+ PUT /buses/{id}
+ DELETE /buses/{id}
+2. Microservice Gestion des Élèves
+Responsabilités :
+ Enregistrement des élèves
+ Modification, suppression, listing
+ Liaison avec les domiciles (coordonnées GPS)
+Exemples d’API :
+ GET /students
+ POST /students
+ PUT /students/{id}
+ DELETE /students/{id}
+3. Microservice Localisation et GPS
+Responsabilités :
+ Collecte des coordonnées GPS envoyées par les parents
+ Suivi en temps réel des bus et des élèves
+ Intégration avec Google Maps API ou équivalent
+Exemples d’API :
+ POST /locations/student
+ POST /locations/bus
+ GET /locations/{entity_id}
+4. Microservice Notifications
+Responsabilités :
+ Envoi de notifications push aux parents 10 minutes avant l'arrivée du bus
+ Système de gestion de templates et de délais
+Exemples d’API :
+ POST /notifications/send
+ GET /notifications/history/{user_id}
+5. Microservice Planification et Trajectoires
+Responsabilités :
+ Calcul des trajets optimaux en fonction des positions des élèves
+ Estimation des temps d’arrivée (ETA)
+ Gestion des circuits du matin et du soir
+Exemples d’API :
+ GET /routes/optimal
+ GET /routes/eta/{student_id}
+ POST /routes/generate
+6. Microservice Groupement d’Élèves
+Responsabilités :
+ Répartir automatiquement les élèves en groupes de taille X (paramétrable) selon leur
+localisation géographique
+ Exposer la configuration X et permettre son ajustement par l’administrateur
+ Fournir la liste des groupes et de leurs membres
+ Collaborer avec le microservice Planification pour optimiser les points de ramassage
+Exemples d’API :
+ POST /groups/generate
+ GET /groups
+ GET /groups/{id}
+ PUT /groups/{id}
+ DELETE /groups/{id}
+7. Microservice Authentification et Sécurité
+Responsabilités :
+ Authentification des utilisateurs (parents, chauffeurs, administrateurs)
+ Gestion des rôles et permissions
+ Sécurité des API et des données
+Exemples d’API :
