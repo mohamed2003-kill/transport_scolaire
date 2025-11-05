@@ -21,3 +21,14 @@ class LocationResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class EntityLocationResponse(BaseModel):
+    entity_id: str
+    entity_type: str
+    latitude: float
+    longitude: float
+    timestamp: datetime
+
+    class Config:
+        from_attributes = True

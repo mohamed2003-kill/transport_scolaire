@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Depends, Path
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from app import schemas, crud, models
 from app.database import SessionLocal, engine
 from typing import List, Optional
@@ -57,7 +58,8 @@ def get_latest_location_by_entity_id(entity_id: str, db: Session = Depends(get_d
     
     # Execute a raw SQL query to extract coordinates
     result = db.execute(
-        f"SELECT ST_X(coordinates::geometry) as longitude, ST_Y(coordinates::geometry) as latitude FROM locations WHERE id = {db_location.id}"
+        text("SELECT ST_X(coordinates::geometry) as longitude, ST_Y(coordinates::geometry) as latitude FROM locations WHERE id = :location_id"),
+        {"location_id": db_location.id}
     ).first()
     
     if result:
@@ -100,7 +102,8 @@ def get_locations(
     for location in locations:
         # Extract coordinates
         result_query = db.execute(
-            f"SELECT ST_X(coordinates::geometry) as longitude, ST_Y(coordinates::geometry) as latitude FROM locations WHERE id = {location.id}"
+            text("SELECT ST_X(coordinates::geometry) as longitude, ST_Y(coordinates::geometry) as latitude FROM locations WHERE id = :location_id"),
+            {"location_id": location.id}
         ).first()
         
         if result_query:
@@ -134,7 +137,8 @@ def get_locations_by_entity(
     for location in locations:
         # Extract coordinates
         result_query = db.execute(
-            f"SELECT ST_X(coordinates::geometry) as longitude, ST_Y(coordinates::geometry) as latitude FROM locations WHERE id = {location.id}"
+            text("SELECT ST_X(coordinates::geometry) as longitude, ST_Y(coordinates::geometry) as latitude FROM locations WHERE id = :location_id"),
+            {"location_id": location.id}
         ).first()
         
         if result_query:
@@ -143,6 +147,38 @@ def get_locations_by_entity(
             longitude, latitude = 0.0, 0.0
             
         result.append(schemas.LocationResponse(
+            entity_id=location.entity_id,
+            entity_type=location.entity_type,
+            latitude=latitude,
+            longitude=longitude,
+            timestamp=location.timestamp
+        ))
+        
+    return result
+
+
+@app.get("/entities/locations", response_model=List[schemas.EntityLocationResponse])
+def get_all_entities_latest_locations(
+    entity_type: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    # Get the latest location for all entities
+    locations = crud.get_latest_locations_by_entities(db=db, entity_type=entity_type)
+    
+    result = []
+    for location in locations:
+        # Extract coordinates
+        result_query = db.execute(
+            text("SELECT ST_X(coordinates::geometry) as longitude, ST_Y(coordinates::geometry) as latitude FROM locations WHERE id = :location_id"),
+            {"location_id": location.id}
+        ).first()
+        
+        if result_query:
+            longitude, latitude = result_query
+        else:
+            longitude, latitude = 0.0, 0.0
+            
+        result.append(schemas.EntityLocationResponse(
             entity_id=location.entity_id,
             entity_type=location.entity_type,
             latitude=latitude,

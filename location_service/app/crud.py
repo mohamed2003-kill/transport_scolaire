@@ -43,3 +43,30 @@ def get_locations_by_entity(db: Session, entity_type: str, entity_id: str, skip:
     ).order_by(
         Location.timestamp.desc()
     ).offset(skip).limit(limit).all()
+
+
+def get_latest_locations_by_entities(db: Session, entity_type: str = None):
+    # Get the latest location for each entity, optionally filtered by entity_type
+    from sqlalchemy import func
+    
+    # Subquery to find the max timestamp for each entity
+    subquery = db.query(
+        Location.entity_id,
+        Location.entity_type,
+        func.max(Location.timestamp).label('max_timestamp')
+    ).group_by(Location.entity_id, Location.entity_type)
+    
+    if entity_type:
+        subquery = subquery.filter(Location.entity_type == entity_type)
+    
+    subquery = subquery.subquery()
+    
+    # Join with the main table to get the full record
+    query = db.query(Location).join(
+        subquery,
+        (Location.entity_id == subquery.c.entity_id) &
+        (Location.entity_type == subquery.c.entity_type) &
+        (Location.timestamp == subquery.c.max_timestamp)
+    )
+    
+    return query.all()
