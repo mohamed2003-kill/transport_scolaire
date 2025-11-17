@@ -93,22 +93,9 @@ services:
       - transport-network
     restart: unless-stopped
 
-  # Optional: Redis for caching and session management
-  redis:
-    image: redis:7-alpine
-    container_name: transport_scolaire_redis
-    ports:
-      - "6381:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - transport-network
-    restart: unless-stopped
-
 networks:
   transport-network:
     driver: bridge
 
 volumes:
   postgres_data:
-  redis_data:

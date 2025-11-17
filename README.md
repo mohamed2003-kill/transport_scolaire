@@ -4,16 +4,17 @@ This project implements a school transportation management system using a micros
 
 ## Overview
 
-The system consists of two main microservices:
+The system consists of the following microservices:
 
 1. **Location Service** - Tracks GPS locations of students and buses using PostgreSQL with PostGIS
 2. **Notification Service** - Sends push notifications using Kafka and Firebase
+3. **Student Service** - Manages student profiles and parent associations (external service)
+4. **Auth Service** - Handles user authentication and device token management (external service)
 
 ## Architecture Components
 
 - PostgreSQL database with PostGIS extension for geospatial data
 - Apache Kafka for message queuing
-- Redis for caching (optional)
 - FastAPI for microservice APIs
 - Firebase Admin SDK for push notifications
 
@@ -57,7 +58,7 @@ This will start all required services:
 - Kafka
 - Location Service (on port 8001)
 - Notification Service (on port 8002)
-- Redis (optional, on port 6379)
+
 
 ## Service Endpoints
 
@@ -67,15 +68,175 @@ This will start all required services:
 ### Location Service API
 
 - `POST /locations/{entity_type}/{entity_id}` - Create a new location entry
-  - `entity_type`: "student" or "bus"
+  - `entity_type`: "student" or "bus"  
   - `entity_id`: Unique identifier for the student or bus
   - Request body: `{"latitude": 36.7783, "longitude": 3.0652}`
+  - Example: `POST /locations/student/12345`
+  - Response: `{"message": "Location for student 12345 created successfully"}`
 
 - `GET /locations/{entity_id}` - Get the latest location for an entity
+  - Response: `{"entity_id": "12345", "entity_type": "student", "latitude": 36.7783, "longitude": 3.0652, "timestamp": "2023-01-01T10:00:00Z"}`
+
+- `GET /locations/` - Get multiple locations with optional filtering
+  - Query parameters: `entity_id`, `entity_type`, `skip` (default: 0), `limit` (default: 100)
+  - Example: `/locations/?entity_type=bus&limit=50`
+  - Response: Array of location objects
+
+- `GET /locations/entity/{entity_type}/{entity_id}` - Get all locations for a specific entity
+  - Query parameters: `skip` (default: 0), `limit` (default: 100)
+  - Response: Array of location objects for the specified entity
+
+- `GET /entities/locations` - Get the latest location for all entities
+  - Query parameter: `entity_type` (optional filter)
+  - Response: Array of entity location objects
 
 ### Notification Service API
 
-- `GET /notifications/history/{user_id}` - Get notification history for a user
+#### Notification History Endpoints
+
+- `GET /notifications/history/{user_id}` - Get notification history for a specific user
+  - Response: Array of notification history objects
+  - Example response:
+    ```json
+    [
+      {
+        "id": 1,
+        "user_id": "user123",
+        "message": "Bus arrival: 5 minutes",
+        "status": "sent",
+        "timestamp": "2023-01-01T10:00:00Z"
+      }
+    ]
+    ```
+
+- `GET /notifications/history/` - Get all notification history with optional filtering
+  - Query parameters: `skip`, `limit`, `status` (optional filter)
+  - Response: Array of notification history objects
+
+- `GET /notifications/history/id/{notification_id}` - Get a specific notification by ID
+  - Response: Single notification history object
+
+#### Notification Types Management
+
+- `GET /notifications/types` - Get all notification types with optional filtering
+  - Query parameters: `skip`, `limit`, `is_active` (optional filter)
+  - Response: Array of notification type objects
+  - Example response:
+    ```json
+    [
+      {
+        "id": 1,
+        "name": "eta_update",
+        "description": "Estimated time of arrival updates",
+        "is_active": true,
+        "created_at": "2023-01-01T10:00:00Z",
+        "updated_at": "2023-01-01T10:00:00Z"
+      }
+    ]
+    ```
+
+- `GET /notifications/types/{notification_type_id}` - Get a specific notification type by ID
+  - Response: Single notification type object
+
+- `POST /notifications/types` - Create a new notification type
+  - Request body: `{"name": "bus_arrived", "description": "Bus arrival notifications", "is_active": true}`
+  - Response: Created notification type object
+
+- `PUT /notifications/types/{notification_type_id}` - Update an existing notification type
+  - Request body: `{"name": "updated_name", "description": "Updated description", "is_active": true}`
+  - Response: Updated notification type object
+
+- `DELETE /notifications/types/{notification_type_id}` - Delete a notification type
+
+#### Notification Subscription Management
+
+- `GET /notifications/subscriptions/{user_id}` - Get all notification subscriptions for a user
+  - Response: Array of subscription objects
+  - Example response:
+    ```json
+    [
+      {
+        "id": 1,
+        "user_id": "user123",
+        "notification_type_id": 1,
+        "is_subscribed": true,
+        "created_at": "2023-01-01T10:00:00Z",
+        "updated_at": "2023-01-01T10:00:00Z",
+        "notification_type": {
+          "id": 1,
+          "name": "eta_update",
+          "description": "Estimated time of arrival updates",
+          "is_active": true,
+          "created_at": "2023-01-01T10:00:00Z",
+          "updated_at": "2023-01-01T10:00:00Z"
+        }
+      }
+    ]
+    ```
+
+- `GET /notifications/subscription/{user_id}/{notification_type_id}` - Get a specific subscription
+  - Response: Single subscription object
+
+- `POST /notifications/subscribe` - Subscribe a user to a notification type
+  - Request body: `{"user_id": "user123", "notification_type_id": 1}`
+  - Response: Created/updated subscription object
+
+- `POST /notifications/unsubscribe` - Unsubscribe a user from a notification type
+  - Request body: `{"user_id": "user123", "notification_type_id": 1}`
+  - Response: Updated subscription object
+
+#### Sending Notifications
+
+- `POST /notifications/send` - Send a notification to one or more users via HTTP API
+  - Request body: 
+    ```json
+    {
+      "user_ids": ["user123", "user456"],
+      "notification_type_id": 1,
+      "title": "Bus Notification",
+      "body": "Your bus is arriving soon",
+      "data": {"eta": 5, "bus_id": "B001"}
+    }
+    ```
+  - Response: 
+    ```json
+    {
+      "success": true,
+      "message": "Notification sent to 2 users",
+      "notification_ids": [1, 2]
+    }
+    ```
+
+## Other Microservices Integration
+
+### Student Service (External Service)
+The Student Service is responsible for managing student profiles and parent associations. The Location Service and Notification Service interact with this service to retrieve parent information when sending notifications.
+
+- **Endpoint**: `http://student-service:8000/students/{student_id}`
+- **Purpose**: Retrieve student information including parent_id to determine notification recipients
+- **Expected Response**:
+  ```json
+  {
+    "id": "student123",
+    "name": "John Doe",
+    "parent_id": "parent123",
+    "bus_id": "bus001"
+  }
+  ```
+
+### Auth Service (External Service)
+The Auth Service manages user authentication and device token management. The Notification Service calls this service to retrieve device tokens for push notifications.
+
+- **Endpoint**: `http://auth-service:8000/auth/users/{user_id}/device_token`
+- **Purpose**: Retrieve device token for a user to send push notifications
+- **Expected Response**:
+  ```json
+  {
+    "user_id": "user123",
+    "device_token": "firebase_device_token_here",
+    "platform": "android|ios"
+  }
+  ```
 
 ## Database Schema
 
@@ -129,6 +290,7 @@ docker build -t transport-scolaire/notification-service .
 2. **Kafka connection issues**: Verify Kafka and ZooKeeper are running
 3. **Firebase initialization errors**: Check that `firebase-service-account.json` is in the correct location
 4. **Docker build failures**: Ensure all required system dependencies are installed
+5. **External service connection issues**: Verify that Student Service and Auth Service are running and accessible
 
 ## Production Deployment
 
