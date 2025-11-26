@@ -1,17 +1,19 @@
+from fastapi.routing import APIRoute
 from fastapi import FastAPI, HTTPException, Depends, Path
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app import schemas, crud, models
 from app.database import SessionLocal, engine
 from typing import List, Optional
+from .get_auth import check_user_exists
 import os
 
-# Create database tables
+
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Location Service", description="Service for tracking GPS locations of students and buses")
 
-# Dependency to get DB session
+
 def get_db():
     db = SessionLocal()
     try:
@@ -20,18 +22,41 @@ def get_db():
         db.close()
 
 
-@app.post("/locations/{entity_type}/{entity_id}", status_code=201)
+@app.post(
+    "/locations/{entity_type}/{entity_id}",
+    status_code=201,
+    summary="Create a location",
+    description="Add a GPS location for a student or a bus..."
+)
 def create_location(
     entity_type: str = Path(..., regex="^(student|bus)$"),
     entity_id: str = Path(...),
     location: schemas.LocationCreate = Depends(),
     db: Session = Depends(get_db)
 ):
-    # Validate entity_type
+    
     if entity_type not in ["student", "bus"]:
         raise HTTPException(status_code=400, detail="entity_type must be 'student' or 'bus'")
     
-    # Create the location in the database
+    
+    
+    
+    try:
+        
+        exists, error_msg = check_user_exists(int(entity_id), entity_type)
+        
+        if not exists:
+            
+            raise HTTPException(status_code=404, detail=f"Auth Service Error: {error_msg}")
+            
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Entity ID must be an integer to check against Auth service")
+    except Exception as e:
+        
+        raise HTTPException(status_code=503, detail=f"Could not connect to Auth Service: {str(e)}")
+    
+
+    
     db_location = crud.create_location(
         db=db,
         entity_id=entity_id,
@@ -42,21 +67,24 @@ def create_location(
     
     return {"message": f"Location for {entity_type} {entity_id} created successfully"}
 
-
-@app.get("/locations/{entity_id}", response_model=schemas.LocationResponse)
+@app.get(
+    "/locations/{entity_id}",
+    response_model=schemas.LocationResponse,
+    summary="Get latest location",
+    description="Retrieve the latest GPS location (latitude and longitude) for a given entity ID."
+)
 def get_latest_location_by_entity_id(entity_id: str, db: Session = Depends(get_db)):
-    # Get the latest location for the given entity_id
+    try:
+        exists, error_msg = check_user_exists(int(entity_id),"")
+        if not exists:
+            raise HTTPException(status_code=404, detail=f"User not found: {error_msg}")
+    except ValueError:
+        pass
     db_location = crud.get_latest_location_by_entity_id(db=db, entity_id=entity_id)
     
     if not db_location:
         raise HTTPException(status_code=404, detail="Location not found")
-    
-    # Extract latitude and longitude from the geometry
-    # Convert the geometry to text and parse coordinates
-    # Note: This is a simplified way to extract coordinates from PostGIS geometry
-    # In a real application, you might want to use ST_X and ST_Y functions
-    
-    # Execute a raw SQL query to extract coordinates
+
     result = db.execute(
         text("SELECT ST_X(coordinates::geometry) as longitude, ST_Y(coordinates::geometry) as latitude FROM locations WHERE id = :location_id"),
         {"location_id": db_location.id}
@@ -65,10 +93,10 @@ def get_latest_location_by_entity_id(entity_id: str, db: Session = Depends(get_d
     if result:
         longitude, latitude = result
     else:
-        # Fallback coordinates if extraction fails
+        
         longitude, latitude = 0.0, 0.0
     
-    # Create response object
+    
     response = schemas.LocationResponse(
         entity_id=db_location.entity_id,
         entity_type=db_location.entity_type,
@@ -80,7 +108,12 @@ def get_latest_location_by_entity_id(entity_id: str, db: Session = Depends(get_d
     return response
 
 
-@app.get("/locations/", response_model=List[schemas.LocationResponse])
+@app.get(
+    "/locations/",
+    response_model=List[schemas.LocationResponse],
+    summary="Get locations",
+    description="Retrieve a list of locations. You can optionally filter by entity ID or entity type and paginate with skip/limit."
+)
 def get_locations(
     entity_id: Optional[str] = None,
     entity_type: Optional[str] = None,
@@ -88,7 +121,7 @@ def get_locations(
     limit: int = 100,
     db: Session = Depends(get_db)
 ):
-    # Get locations with optional filtering
+    
     query = db.query(models.Location)
     
     if entity_id:
@@ -100,7 +133,7 @@ def get_locations(
     
     result = []
     for location in locations:
-        # Extract coordinates
+        
         result_query = db.execute(
             text("SELECT ST_X(coordinates::geometry) as longitude, ST_Y(coordinates::geometry) as latitude FROM locations WHERE id = :location_id"),
             {"location_id": location.id}
@@ -122,7 +155,12 @@ def get_locations(
     return result
 
 
-@app.get("/locations/entity/{entity_type}/{entity_id}", response_model=List[schemas.LocationResponse])
+@app.get(
+    "/locations/entity/{entity_type}/{entity_id}",
+    response_model=List[schemas.LocationResponse],
+    summary="Get locations by entity",
+    description="Retrieve all locations for a specific entity (student or bus) with optional pagination using skip and limit."
+)
 def get_locations_by_entity(
     entity_type: str = Path(..., regex="^(student|bus)$"),
     entity_id: str = Path(...),
@@ -130,12 +168,16 @@ def get_locations_by_entity(
     limit: int = 100,
     db: Session = Depends(get_db)
 ):
-    # Get all locations for a specific entity (student or bus)
+    try:
+        exists, error_msg = check_user_exists(int(entity_id), entity_type)
+        if not exists:
+            raise HTTPException(status_code=404, detail=f"User not found: {error_msg}")
+    except ValueError:
+        pass
     locations = crud.get_locations_by_entity(db=db, entity_type=entity_type, entity_id=entity_id, skip=skip, limit=limit)
     
     result = []
     for location in locations:
-        # Extract coordinates
         result_query = db.execute(
             text("SELECT ST_X(coordinates::geometry) as longitude, ST_Y(coordinates::geometry) as latitude FROM locations WHERE id = :location_id"),
             {"location_id": location.id}
@@ -157,17 +199,20 @@ def get_locations_by_entity(
     return result
 
 
-@app.get("/entities/locations", response_model=List[schemas.EntityLocationResponse])
+@app.get(
+    "/entities/locations",
+    response_model=List[schemas.EntityLocationResponse],
+    summary="Get latest locations of all entities",
+    description="Retrieve the latest GPS locations for all entities, optionally filtered by entity type."
+)
 def get_all_entities_latest_locations(
     entity_type: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    # Get the latest location for all entities
     locations = crud.get_latest_locations_by_entities(db=db, entity_type=entity_type)
     
     result = []
     for location in locations:
-        # Extract coordinates
         result_query = db.execute(
             text("SELECT ST_X(coordinates::geometry) as longitude, ST_Y(coordinates::geometry) as latitude FROM locations WHERE id = :location_id"),
             {"location_id": location.id}
@@ -189,6 +234,17 @@ def get_all_entities_latest_locations(
     return result
 
 
-@app.get("/")
+
+@app.get("/", summary="Root endpoint", description=" All endpoints and their descriptions")
 def read_root():
-    return {"service": "Location Service", "status": "running"}
+    routes_info = []
+    for route in app.routes:
+        if isinstance(route, APIRoute):
+            routes_info.append({
+                "path": route.path,
+                "methods": list(route.methods),
+                "name": route.name,
+                "summary": route.summary,
+                "description": route.description
+            })
+    return {"service": "Location Service", "status": "running", "endpoints": routes_info}
