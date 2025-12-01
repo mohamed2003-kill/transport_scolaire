@@ -67,45 +67,83 @@ def create_location(
     
     return {"message": f"Location for {entity_type} {entity_id} created successfully"}
 
+
 @app.get(
-    "/locations/{entity_id}",
-    response_model=schemas.LocationResponse,
-    summary="Get latest location",
-    description="Retrieve the latest GPS location (latitude and longitude) for a given entity ID."
+    "/locations/entity/{entity_type}/{entity_id}",
+    response_model=List[schemas.LocationResponse],
+    summary="Get locations by entity",
+    description="Retrieve all locations for a specific entity (student or bus) with optional pagination using skip and limit."
 )
-def get_latest_location_by_entity_id(entity_id: str, db: Session = Depends(get_db)):
+def get_locations_by_entity(
+    entity_type: str = Path(..., regex="^(student|bus)$"),
+    entity_id: str = Path(...),
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
     try:
-        exists, error_msg = check_user_exists(int(entity_id),"")
+        exists, error_msg = check_user_exists(int(entity_id), entity_type)
         if not exists:
             raise HTTPException(status_code=404, detail=f"User not found: {error_msg}")
     except ValueError:
         pass
-    db_location = crud.get_latest_location_by_entity_id(db=db, entity_id=entity_id)
+    locations = crud.get_locations_by_entity(db=db, entity_type=entity_type, entity_id=entity_id, skip=skip, limit=limit)
     
-    if not db_location:
-        raise HTTPException(status_code=404, detail="Location not found")
-
-    result = db.execute(
-        text("SELECT ST_X(coordinates::geometry) as longitude, ST_Y(coordinates::geometry) as latitude FROM locations WHERE id = :location_id"),
-        {"location_id": db_location.id}
-    ).first()
-    
-    if result:
-        longitude, latitude = result
-    else:
+    result = []
+    for location in locations:
+        result_query = db.execute(
+            text("SELECT ST_X(coordinates::geometry) as longitude, ST_Y(coordinates::geometry) as latitude FROM locations WHERE id = :location_id"),
+            {"location_id": location.id}
+        ).first()
         
-        longitude, latitude = 0.0, 0.0
+        if result_query:
+            longitude, latitude = result_query
+        else:
+            longitude, latitude = 0.0, 0.0
+            
+        result.append(schemas.LocationResponse(
+            entity_id=location.entity_id,
+            entity_type=location.entity_type,
+            latitude=latitude,
+            longitude=longitude,
+            timestamp=location.timestamp
+        ))
+        
+    return result
+
+@app.get(
+    "/entities/locations",
+    response_model=List[schemas.EntityLocationResponse],
+    summary="Get latest locations of all entities",
+    description="Retrieve the latest GPS locations for all entities, optionally filtered by entity type."
+)
+def get_all_entities_latest_locations(
+    entity_type: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    locations = crud.get_latest_locations_by_entities(db=db, entity_type=entity_type)
     
-    
-    response = schemas.LocationResponse(
-        entity_id=db_location.entity_id,
-        entity_type=db_location.entity_type,
-        latitude=latitude,
-        longitude=longitude,
-        timestamp=db_location.timestamp
-    )
-    
-    return response
+    result = []
+    for location in locations:
+        result_query = db.execute(
+            text("SELECT ST_X(coordinates::geometry) as longitude, ST_Y(coordinates::geometry) as latitude FROM locations WHERE id = :location_id"),
+            {"location_id": location.id}
+        ).first()
+        
+        if result_query:
+            longitude, latitude = result_query
+        else:
+            longitude, latitude = 0.0, 0.0
+            
+        result.append(schemas.EntityLocationResponse(
+            entity_id=location.entity_id,
+            entity_type=location.entity_type,
+            latitude=latitude,
+            longitude=longitude,
+            timestamp=location.timestamp
+        ))
+        
+    return result
 
 
 @app.get(
@@ -154,84 +192,6 @@ def get_locations(
         
     return result
 
-
-@app.get(
-    "/locations/entity/{entity_type}/{entity_id}",
-    response_model=List[schemas.LocationResponse],
-    summary="Get locations by entity",
-    description="Retrieve all locations for a specific entity (student or bus) with optional pagination using skip and limit."
-)
-def get_locations_by_entity(
-    entity_type: str = Path(..., regex="^(student|bus)$"),
-    entity_id: str = Path(...),
-    skip: int = 0,
-    limit: int = 100,
-    db: Session = Depends(get_db)
-):
-    try:
-        exists, error_msg = check_user_exists(int(entity_id), entity_type)
-        if not exists:
-            raise HTTPException(status_code=404, detail=f"User not found: {error_msg}")
-    except ValueError:
-        pass
-    locations = crud.get_locations_by_entity(db=db, entity_type=entity_type, entity_id=entity_id, skip=skip, limit=limit)
-    
-    result = []
-    for location in locations:
-        result_query = db.execute(
-            text("SELECT ST_X(coordinates::geometry) as longitude, ST_Y(coordinates::geometry) as latitude FROM locations WHERE id = :location_id"),
-            {"location_id": location.id}
-        ).first()
-        
-        if result_query:
-            longitude, latitude = result_query
-        else:
-            longitude, latitude = 0.0, 0.0
-            
-        result.append(schemas.LocationResponse(
-            entity_id=location.entity_id,
-            entity_type=location.entity_type,
-            latitude=latitude,
-            longitude=longitude,
-            timestamp=location.timestamp
-        ))
-        
-    return result
-
-
-@app.get(
-    "/entities/locations",
-    response_model=List[schemas.EntityLocationResponse],
-    summary="Get latest locations of all entities",
-    description="Retrieve the latest GPS locations for all entities, optionally filtered by entity type."
-)
-def get_all_entities_latest_locations(
-    entity_type: Optional[str] = None,
-    db: Session = Depends(get_db)
-):
-    locations = crud.get_latest_locations_by_entities(db=db, entity_type=entity_type)
-    
-    result = []
-    for location in locations:
-        result_query = db.execute(
-            text("SELECT ST_X(coordinates::geometry) as longitude, ST_Y(coordinates::geometry) as latitude FROM locations WHERE id = :location_id"),
-            {"location_id": location.id}
-        ).first()
-        
-        if result_query:
-            longitude, latitude = result_query
-        else:
-            longitude, latitude = 0.0, 0.0
-            
-        result.append(schemas.EntityLocationResponse(
-            entity_id=location.entity_id,
-            entity_type=location.entity_type,
-            latitude=latitude,
-            longitude=longitude,
-            timestamp=location.timestamp
-        ))
-        
-    return result
 
 
 
